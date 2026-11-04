@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hannes – Portfolio</title>
+  <meta name="description" content="Portfolio von Hannes: Projekte, Skills und Kontakt.">
+  <!-- Pixelfont für Überschriften und Labels (Fließtext nutzt die Monospace-Schrift des Systems) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Nicht blockierend laden: media="print" lässt die Seite sofort zeichnen und die
+       Skripte starten; sobald die Schrift da ist, gilt sie für alles -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap"
+        media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Dark Mode schon vor dem ersten Zeichnen setzen, damit nichts aufblitzt:
+    // gespeicherte Wahl, sonst die Einstellung des Systems
+    (function () {
+      let theme = null;
+      try { theme = localStorage.getItem('theme'); } catch (e) {}
+      if (!theme) theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = theme;
+    })();
+  </script>
+</head>
+<body>
+  <!-- Navigation: über dem Pixelfeld nur die Menüpunkte, danach eine feste Leiste -->
+  <header class="nav" id="nav">
+    <a class="nav__home" href="#top" data-i18n-aria="top" aria-label="Nach oben"></a>
+    <nav class="nav__links" data-i18n-aria="menu" aria-label="Hauptmenü"></nav>
+    <div class="nav__tools">
+      <button class="icon-btn lang-btn" type="button" data-action="lang"></button>
+      <button class="icon-btn" type="button" data-action="theme" data-i18n-aria="theme" aria-label="Dark Mode umschalten"></button>
+      <a class="icon-btn" data-action="github" target="_blank" rel="noopener" aria-label="GitHub"></a>
+    </div>
+    <button class="icon-btn nav__burger" type="button" data-i18n-aria="menuOpen" aria-label="Menü öffnen" aria-expanded="false" aria-controls="menu"></button>
+  </header>
+
+  <!-- Vollbild-Menü für das Handy -->
+  <div class="menu" id="menu" hidden>
+    <nav class="menu__links" data-i18n-aria="menu" aria-label="Menü"></nav>
+    <div class="menu__tools"></div>
+  </div>
+
+  <section class="hero" id="top">
+    <canvas id="pixels"></canvas>
+  </section>
+
+  <!-- Übergang vom Pixelfeld in den Inhalt -->
+  <div class="hero-fade" aria-hidden="true"></div>
+
+  <main>
+    <section class="section" id="projekte">
+      <h2 class="section__title" data-i18n="projects">Projekte</h2>
+      <div class="projects"></div>
+    </section>
+
+    <section class="section" id="ueber-mich">
+      <h2 class="section__title" data-i18n="about">Über mich</h2>
+      <p class="about__intro"></p>
+      <div class="stats"></div>
+    </section>
+
+    <section class="section" id="skills">
+      <h2 class="section__title" data-i18n="skills">Skills</h2>
+      <ul class="skills"></ul>
+    </section>
+
+    <!-- Wird per JS mit den letzten öffentlichen GitHub-Repos gefüllt; ohne Daten bleibt er ausgeblendet -->
+    <section class="section now" id="gerade" hidden>
+      <h2 class="section__title" data-i18n="now">Woran ich gerade arbeite</h2>
+      <ul class="now__list"></ul>
+    </section>
+
+    <section class="section" id="kontakt">
+      <h2 class="section__title" data-i18n="contact">Kontakt</h2>
+      <div class="contact"></div>
+    </section>
+  </main>
+
+  <footer class="footer"></footer>
+
+  <!-- Detailansicht eines Projekts -->
+  <dialog class="dialog" id="project-dialog" aria-labelledby="dialog-title">
+    <button class="icon-btn dialog__close" type="button" data-i18n-aria="close" aria-label="Schließen"></button>
+    <div class="dialog__media"></div>
+    <div class="dialog__body">
+      <h3 class="dialog__title" id="dialog-title"></h3>
+      <p class="dialog__meta"></p>
+      <p class="dialog__summary"></p>
+      <div class="dialog__gallery"></div>
+      <div class="dialog__links"></div>
+    </div>
+  </dialog>
+
+  <script src="js/engine.js"></script>
+  <script src="js/behaviors.js"></script>
+  <script src="js/shapes.js"></script>
+  <script src="js/content.js"></script>
+  <script src="js/i18n.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,837 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ---------- Farben & Grundwerte ----------
+   Nur Grautöne – im Dark Mode umgedreht, passend zum invertierten Pixel-Raster */
+:root {
+  --bg: #ffffff;
+  --fg: #222222;
+  --muted: #e8e8e8;     /* Flächen, leere Pixel */
+  --line: #8a8a8a;      /* Nebentext, Linien */
+  --backdrop: rgba(255, 255, 255, 0.85);
+
+  --px: 4px;           /* Größe eines "Design-Pixels" für Rahmen und Akzente */
+  --font-pixel: "Silkscreen", ui-monospace, Consolas, monospace;
+  --font-text: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  --nav-h: 64px;
+}
+
+:root[data-theme="dark"] {
+  --bg: #000000;
+  --fg: #dddddd;
+  --muted: #1c1c1c;
+  --line: #808080;
+  --backdrop: rgba(0, 0, 0, 0.85);
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Platz für den Scrollbalken immer freihalten: Wird das Scrollen gesperrt (offenes Menü,
+     Detailansicht), verschwindet der Balken, ohne dass die Seite nach rechts rutscht */
+  scrollbar-gutter: stable;
+}
+
+html,
+body {
+  background: var(--bg);
+  transition: background-color 0.6s;
+}
+
+body {
+  font-family: var(--font-text);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-pixel);
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+a {
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+:focus-visible {
+  outline: var(--px) solid var(--fg);
+  outline-offset: var(--px);
+}
+
+/* Pixel-Symbole (SVG aus Pixel-Zeilen, siehe ui.js) */
+.pixel-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  shape-rendering: crispEdges;
+}
+
+/* ---------- Navigation ---------- */
+.nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 16px;
+  /* Über dem Pixelfeld sollen Maus und Klicks durch die Leiste hindurch ans Raster gehen */
+  pointer-events: none;
+}
+
+.nav > * {
+  pointer-events: auto;
+}
+
+.nav__home,
+.nav__tools {
+  display: none;
+}
+
+.nav__links {
+  display: flex;
+  gap: 8px;
+}
+
+.nav__links a,
+.menu__links a {
+  position: relative;
+  font-family: var(--font-pixel);
+  text-decoration: none;
+}
+
+.nav__links {
+  gap: 28px;
+}
+
+.nav__links a {
+  padding: 6px 0 10px;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  /* Kein Kasten: ein schmaler Umriss in Hintergrundfarbe hält den Text über den
+     grauen Randpixeln lesbar */
+  text-shadow:
+    1px 0 var(--bg), -1px 0 var(--bg), 0 1px var(--bg), 0 -1px var(--bg),
+    2px 0 var(--bg), -2px 0 var(--bg), 0 2px var(--bg), 0 -2px var(--bg);
+}
+
+/* Hover & aktueller Bereich: gepunktete Pixel-Linie, die sich in Schritten von links aufbaut */
+.nav__links a::after,
+.menu__links a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--px);
+  background: repeating-linear-gradient(90deg, currentColor 0 var(--px), transparent var(--px) calc(2 * var(--px)));
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 0.3s steps(6);
+}
+
+.nav__links a:hover::after,
+.nav__links a:focus-visible::after,
+.nav__links a.is-active::after,
+.menu__links a:hover::after,
+.menu__links a:focus-visible::after {
+  clip-path: inset(0);
+}
+
+/* Über dem Pixelfeld: Menüpunkte auf Höhe der Pixel-Buttons */
+.nav:not(.is-solid) {
+  height: auto;
+  padding-top: 60px;
+}
+
+/* Feste Leiste, sobald das Pixelfeld weggescrollt ist */
+.nav.is-solid {
+  justify-content: space-between;
+  background: var(--bg);
+  box-shadow: 0 var(--px) 0 0 var(--muted);
+}
+
+.nav.is-solid .nav__home,
+.nav.is-solid .nav__tools {
+  display: flex;
+}
+
+.nav__home {
+  width: 32px;
+  height: 34px;
+  color: var(--fg);
+}
+
+.nav__tools {
+  gap: 8px;
+}
+
+/* .nav davor, damit .icon-btn (display: grid) das nicht überschreibt */
+.nav .nav__burger {
+  display: none;
+}
+
+/* Quadratischer Icon-Button mit Pixelrahmen */
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 9px;
+  margin: var(--px);
+  color: var(--fg);
+  background: var(--bg);
+  border: 0;
+  cursor: pointer;
+  box-shadow:
+    0 calc(-1 * var(--px)) 0 0 var(--fg),
+    0 var(--px) 0 0 var(--fg),
+    calc(-1 * var(--px)) 0 0 0 var(--fg),
+    var(--px) 0 0 0 var(--fg);
+}
+
+.icon-btn:hover {
+  color: var(--bg);
+  background: var(--fg);
+}
+
+/* Sprachwahl in der Leiste: Kürzel in der Pixelschrift statt Symbol */
+.lang-btn {
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Handy-Menü ---------- */
+.menu {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  background: var(--bg);
+  animation: wipe-down 0.35s steps(8);
+}
+
+.menu[hidden] {
+  display: none;
+}
+
+.menu.is-closing {
+  animation: wipe-up 0.3s steps(8) forwards;
+}
+
+.menu__links {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.menu__links a {
+  padding-bottom: 10px;
+  font-size: 1.6rem;
+}
+
+.menu__tools {
+  display: flex;
+  gap: 16px;
+}
+
+@keyframes wipe-down {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0); }
+}
+
+@keyframes wipe-up {
+  from { clip-path: inset(0); }
+  to { clip-path: inset(0 0 100% 0); }
+}
+
+/* ---------- Pixelfeld oben ---------- */
+/* Genau eine Bildschirmhöhe. svh statt vh: bleibt auf dem Handy stabil,
+   wenn die Adressleiste ein-/ausfährt */
+.hero {
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  overflow: hidden;
+}
+
+#pixels {
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* Senkrechtes Wischen scrollt die Seite, alles andere geht an die Pixel */
+  touch-action: pan-y;
+}
+
+/* Übergang Pixelfeld -> Inhalt: verblassende Pixel (Bild wird in ui.js erzeugt) */
+.hero-fade {
+  /* position: liegt über dem Pixelfeld, das ein paar Zeilen in den Übergang hineinragt */
+  position: relative;
+  height: 120px;
+  background-repeat: no-repeat;
+  background-position: top center;
+  image-rendering: pixelated;
+}
+
+:root[data-theme="dark"] .hero-fade {
+  filter: invert(1);
+}
+
+/* ---------- Bereiche ---------- */
+.section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 72px 24px 48px;
+  scroll-margin-top: var(--nav-h);
+}
+
+.section__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 36px;
+  font-size: clamp(1.5rem, 4vw, 2.4rem);
+}
+
+/* Pixel-Quadrat vor jeder Überschrift */
+.section__title::before {
+  content: "";
+  width: 0.5em;
+  height: 0.5em;
+  background: var(--fg);
+}
+
+/* Pixel-Platzhalter, solange kein Bild/Video eingetragen ist */
+.placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  color: var(--line);
+  background: var(--muted);
+}
+
+/* ---------- Projekte ---------- */
+.projects {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 56px 32px;
+}
+
+/* Erstes Projekt: ganze Breite, Bild im Kinoformat */
+.card--wide {
+  grid-column: 1 / -1;
+}
+
+/* Hochformat-Bild (z. B. Handy-Screenshot): sein eigenes Seitenverhältnis, nicht der Querformat-Kasten */
+.card--portrait .card__media {
+  aspect-ratio: 450 / 985;
+  width: 60%;
+}
+
+@media (min-width: 761px) {
+  .card--wide:not(.card--portrait) .card__media {
+    aspect-ratio: 21 / 9;
+  }
+
+  .card--wide .card__title {
+    font-size: 1.6rem;
+  }
+
+  /* Hochformat auf dem Rechner: Text links, Bild rechts.
+     .card davor, weil die .card-Regel weiter unten steht und sonst gewinnt */
+  .card.card--portrait {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 300px);
+    column-gap: 48px;
+    align-items: center;
+  }
+
+  .card--portrait .card__media {
+    width: auto;
+    order: 2;
+  }
+
+  .card--portrait .card__body {
+    padding-top: 0;
+    order: 1;
+  }
+}
+
+/* Karte ohne Rahmen: Bild, darunter Titel und Stichworte. Beim Drüberfahren
+   legt sich ein dicker Rahmen um das Bild */
+.card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.card__media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--muted);
+}
+
+/* Pixel-Motiv statt Bild, solange keins eingetragen ist */
+.cover {
+  width: 100%;
+  height: 100%;
+}
+
+.cover svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cover__sun {
+  fill: var(--fg);
+}
+
+.cover__ground {
+  fill: var(--fg);
+}
+
+/* Wechsel-Anzeige: alle Bilder liegen übereinander, nur das aktive ist sichtbar */
+.slides {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.slides__frame {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.slides__frame.is-on {
+  opacity: 1;
+}
+
+.card__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 0 var(--fg);
+  transition: box-shadow 0.15s steps(3);
+}
+
+.card:hover .card__media::after,
+.card:focus-visible .card__media::after {
+  box-shadow: inset 0 0 0 4px var(--fg);
+}
+
+/* contain statt cover: Screenshots und Hochformat-Bilder werden ganz gezeigt, nicht abgeschnitten.
+   Der Rest der Fläche hat die Hintergrundfarbe des Kastens */
+.card__media img,
+.card__media video,
+.dialog__media img,
+.dialog__media video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+}
+
+/* Nummer und Jahr in einer Zeile: Nummer als invertiertes Kästchen */
+.card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-pixel);
+  font-size: 0.75rem;
+}
+
+.card__index {
+  padding: 2px 6px;
+  color: var(--bg);
+  background: var(--fg);
+}
+
+.card__year {
+  color: var(--line);
+}
+
+.card__title {
+  font-size: 1rem;
+}
+
+.card__summary {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Stichworte als dünne Umrandung statt grauer Kästchen */
+.tag {
+  padding: 1px 6px;
+  font-family: var(--font-pixel);
+  font-size: 0.65rem;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+
+/* ---------- Über mich ---------- */
+.about__intro {
+  max-width: 60ch;
+  margin-bottom: 36px;
+  font-size: 1.1rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 32px;
+  margin-bottom: 56px;
+}
+
+/* Kennzahl: dünne Linie oben, große Zahl, kleiner Text darunter */
+.stat {
+  padding-top: 14px;
+  border-top: 2px solid var(--fg);
+}
+
+.stat__value {
+  display: block;
+  font-family: var(--font-pixel);
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+
+.stat__label {
+  font-size: 0.85rem;
+  color: var(--line);
+}
+
+/* ---------- Skills ---------- */
+/* Skills als Pixel-Chips: nur Namen, ohne Bewertung */
+.skills {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.skill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font-family: var(--font-pixel);
+  font-size: 0.8rem;
+  border: 2px solid var(--fg);
+}
+
+.skill__dot {
+  width: 8px;
+  height: 8px;
+  background: var(--fg);
+}
+
+.skill img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+/* ---------- Woran ich gerade arbeite: kleine Liste der letzten GitHub-Repos ---------- */
+.now__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.now__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+
+.now__link {
+  font-family: var(--font-pixel);
+  font-size: 0.8rem;
+  color: var(--fg);
+}
+
+.now__meta {
+  font-size: 0.78rem;
+  color: var(--line);
+}
+
+/* ---------- Kontakt ---------- */
+.contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.big-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  font-family: var(--font-pixel);
+  font-size: 1.05rem;
+  text-decoration: none;
+  color: var(--fg);
+  background: none;
+  border: 2px solid var(--fg);
+}
+
+.big-btn .pixel-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.big-btn:hover,
+.big-btn:focus-visible {
+  color: var(--bg);
+  background: var(--fg);
+  border-color: var(--fg);
+}
+
+/* ---------- Footer ---------- */
+.footer {
+  padding: 48px 24px;
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-size: 0.7rem;
+  color: var(--line);
+}
+
+/* ---------- Detailansicht ---------- */
+.dialog {
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  color: var(--fg);
+  background: var(--bg);
+  border: 0;
+  box-shadow:
+    0 calc(-1 * var(--px)) 0 0 var(--fg),
+    0 var(--px) 0 0 var(--fg),
+    calc(-1 * var(--px)) 0 0 0 var(--fg),
+    var(--px) 0 0 0 var(--fg);
+}
+
+.dialog[open] {
+  animation: wipe-down 0.3s steps(8);
+}
+
+.dialog::backdrop {
+  background: var(--backdrop);
+}
+
+.dialog__close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.dialog__media {
+  aspect-ratio: 16 / 9;
+  background: var(--muted);
+}
+
+.dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 24px 24px;
+}
+
+.dialog__title {
+  font-size: 1.4rem;
+}
+
+.dialog__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--line);
+  font-size: 0.85rem;
+}
+
+.dialog__summary {
+  max-width: 60ch;
+}
+
+.dialog__gallery {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: var(--px);
+}
+
+.dialog__gallery:empty,
+.dialog__links:empty,
+.dialog__summary:empty {
+  display: none;
+}
+
+.thumb {
+  flex: none;
+  width: 120px;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  cursor: pointer;
+  background: var(--muted);
+}
+
+.thumb img,
+.thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dialog__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 8px;
+}
+
+.dialog__links .big-btn {
+  padding: 10px 16px;
+  font-size: 0.85rem;
+}
+
+/* Hochformat-Projekt in der Detailansicht: Bild (z. B. Handy-Screenshot) neben dem Text */
+/* oberer Abstand: Platz für das X zum Schließen, das oben rechts im Dialog sitzt */
+.dialog--portrait .dialog__media {
+  aspect-ratio: 450 / 985;
+  width: 60%;
+  margin: 64px auto 0;
+}
+
+@media (min-width: 761px) {
+  .dialog.dialog--portrait {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+    align-items: center;
+  }
+
+  .dialog--portrait .dialog__media {
+    width: auto;
+    margin: 64px 0 0;
+    order: 2;
+  }
+
+  .dialog--portrait .dialog__body {
+    order: 1;
+  }
+}
+
+/* ---------- Einblenden beim Scrollen: Pixel-Wischen von oben nach unten ---------- */
+.reveal {
+  clip-path: inset(-24px -24px 100% -24px);
+}
+
+.reveal.is-visible {
+  animation: reveal 0.5s steps(8) forwards;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+@keyframes reveal {
+  to { clip-path: inset(-24px); }
+}
+
+/* ---------- Handy ---------- */
+@media (max-width: 760px) {
+  :root {
+    --px: 3px;
+    --nav-h: 56px;
+  }
+
+  .nav__links,
+  .nav.is-solid .nav__tools {
+    display: none;
+  }
+
+  .nav .nav__burger {
+    display: grid;
+  }
+
+  .nav:not(.is-solid) {
+    padding-top: 26px;
+  }
+
+  /* Über dem Pixelfeld ist der Menübutton aus Pixeln (main.js) – der HTML-Button
+     erscheint dort nur als Schließen-X an derselben Stelle, solange das Menü offen ist */
+  .nav:not(.is-solid):not(.menu-open) .nav__burger {
+    display: none;
+  }
+
+  .section {
+    padding: 56px 16px 32px;
+  }
+
+  .projects {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Weniger Bewegung, wenn im System so eingestellt ---------- */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .reveal {
+    clip-path: none;
+  }
+}
