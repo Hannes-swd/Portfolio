@@ -557,6 +557,9 @@
 
   /* ---------- Start ---------- */
 
+  // Für alle, die die Konsole öffnen
+  console.log('Hey, du schaust in die Konsole. Schön, dass du hier bist! Feedback gern über github.com/Hannes-swd');
+
   // Für den Pixel-Menübutton im Pixelfeld (main.js)
   window.openMenu = openMenu;
 
