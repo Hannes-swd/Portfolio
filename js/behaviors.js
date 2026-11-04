@@ -430,7 +430,8 @@
           zone.h = shown ? H * s : 0;
           zone.col = Math.round(engine.cols * anchor[0] - zone.w * align[0] + offset[0]);
           zone.row = Math.round(engine.rows * anchor[1] - zone.h * align[1] + offset[1]);
-          if (options.rightOf) {
+          // rightOf nur, solange der andere Button sichtbar ist; sonst bleibt die feste Position
+          if (options.rightOf && options.rightOf.zone.w > 0) {
             const other = options.rightOf.zone;
             zone.col = other.col + other.w + (options.gap ?? 4);
             zone.row = other.row;

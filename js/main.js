@@ -112,6 +112,7 @@
     anchor: [0, 0],
     align: [0, 0],
     offset: [12, 12],                   // gleicher Abstand zum Rand wie das Logo oben rechts
+    visible: e => e.width > 760,        // auf dem Handy steht die Sprache im Menü
     onClick: () => window.I18N && I18N.toggleLanguage()
   }));
 
@@ -120,8 +121,11 @@
     icon: Behaviors.Icons.contrast(9),  // Symbol 9x9 Pixel, gleich groß wie das GitHub-Logo
     padding: 1,                         // Abstand Rahmen -> Symbol
     sizePx: 44,                         // mindestens so groß, dass man ihn am Handy gut trifft
-    rightOf: langButton,
-    gap: 4,              // direkt rechts neben dem Sprach-Button
+    anchor: [0, 0],
+    align: [0, 0],
+    offset: [12, 12],
+    rightOf: langButton, // rechts neben dem Sprach-Button, solange der sichtbar ist
+    gap: 4,
     onClick: () => window.setTheme(!engine.inverted)
   }));
 
@@ -133,6 +137,7 @@
     sizePx: 44,
     rightOf: themeButton,  // direkt rechts neben dem Dark-Mode-Schalter
     gap: 4,
+    visible: e => e.width > 760,   // auf dem Handy steht GitHub im Menü
     onClick: () => window.open(GITHUB_URL, '_blank', 'noopener')
   }));
 
