@@ -13,6 +13,19 @@
   }
 
   // Fester Pseudo-Zufallswert (0…1) aus zwei Zahlen – gleiches Ergebnis bei gleicher Eingabe
+  // Pixel-Figur aus Zeilen ('#' = Pixel, '.' = leer) als Overlay zeichnen; S = Rasterpixel pro Figur-Pixel.
+  // keep: die Farbe bleibt im Dark Mode so, wie sie ist
+  function paintRows(e, rows, x, y, S, c, a) {
+    for (let r = 0; r < rows.length; r++) {
+      for (let k = 0; k < rows[r].length; k++) {
+        if (rows[r][k] !== '#') continue;
+        for (let sy = 0; sy < S; sy++) {
+          for (let sx = 0; sx < S; sx++) e.overlay(x + k * S + sx, y + r * S + sy, c[0], c[1], c[2], a, true);
+        }
+      }
+    }
+  }
+
   function hash2(a, b) {
     const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
     return v - Math.floor(v);
@@ -972,6 +985,674 @@
     },
 
     /*
+     * Schnee: ab und zu fällt eine kleine weiße Flocke von oben nach unten und weht dabei
+     * leicht hin und her. Gezeichnet als Overlay, der Zustand des Rasters bleibt unverändert.
+     * Weiß bleibt weiß, auch im Dark Mode (keep). Damit man sie auf dem weißen Feld sieht,
+     * hat jede Flocke einen zarten grauen Rand.
+     *
+     * Die Positionen stehen als Anteile der Fläche (0…1), damit sie beim Ändern der
+     * Fenstergröße an der richtigen Stelle bleiben.
+     *
+     * Optionen:
+     *   max     – höchstens so viele Flocken gleichzeitig (Standard: je nach Fläche)
+     *   every   – [min, max] Sekunden zwischen zwei neuen Flocken
+     *   speed   – Faktor auf die Fallgeschwindigkeit (1 = normal, 0.5 = halb so schnell)
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem fällt kein Schnee.
+     */
+    snow(options = {}) {
+      const every = options.every ?? [2, 6];
+      const speed = options.speed ?? 1;
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const CORE = [255, 255, 255];
+      const EDGE = [120, 120, 130], EDGE_ALPHA = 0.55;
+      // Kleine Flocken: ein Punkt oder ein 2x2-Block, jeweils mit Rand außen herum
+      const SHAPES = [
+        { core: [[0, 0]], edge: [[1, 0], [-1, 0], [0, 1], [0, -1]] },
+        { core: [[0, 0], [1, 0], [0, 1], [1, 1]], edge: [[-1, 0], [-1, 1], [2, 0], [2, 1], [0, -1], [1, -1], [0, 2], [1, 2]] }
+      ];
+
+      let flakes = [], timer = 0, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      function makeFlake(v) {
+        return {
+          u: Math.random(),                          // Position in der Breite (0…1)
+          v,                                         // Position in der Höhe (0…1)
+          fall: rnd(0.04, 0.07) * speed,             // Anteil der Höhe pro Sekunde
+          amp: rnd(0.6, 1.8),                        // Seitwärts-Schwingung in Rasterpixeln
+          freq: rnd(0.8, 1.6),
+          phase: rnd(0, Math.PI * 2),
+          shape: Math.random() < 0.7 ? SHAPES[0] : SHAPES[1]
+        };
+      }
+
+      return {
+        init() {
+          // Beim Ändern der Fenstergröße bleiben die Flocken erhalten
+          if (flakes.length) return;
+          flakes = Array.from({ length: 3 }, () => makeFlake(Math.random()));   // gleich ein paar im Bild
+          timer = rnd(every[0], every[1]);
+        },
+
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          const W = e.cols, H = e.rows;
+          const limit = options.max ?? Math.max(8, Math.min(14, Math.round((W * H) / 4000)));
+
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            if (flakes.length < limit) flakes.push(makeFlake(-rnd(0.01, 0.05)));
+          }
+
+          const wind = Math.sin(t * 0.12) * 0.004;   // leichter Wind (Anteil der Breite pro Sekunde)
+          for (let k = flakes.length - 1; k >= 0; k--) {
+            const f = flakes[k];
+            f.v += f.fall * dt;
+            f.u += wind * dt;
+            if (f.u < 0) f.u += 1;
+            else if (f.u >= 1) f.u -= 1;
+            if (f.v > 1.02) { flakes.splice(k, 1); continue; }   // unten angekommen
+
+            const x = Math.round(f.u * W + Math.sin(t * f.freq + f.phase) * f.amp);
+            const y = Math.round(f.v * H);
+            for (const [dx, dy] of f.shape.edge) {
+              e.overlay(x + dx, y + dy, EDGE[0], EDGE[1], EDGE[2], EDGE_ALPHA, true);
+            }
+            for (const [dx, dy] of f.shape.core) {
+              e.overlay(x + dx, y + dy, CORE[0], CORE[1], CORE[2], 1, true);
+            }
+          }
+        }
+      };
+    },
+
+    /*
+     * Fledermäuse: ab und zu fliegt eine kleine Gruppe quer durchs Bild und flattert dabei.
+     * Gezeichnet als Overlay; die Farbe bleibt im Dark Mode so, wie sie ist (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei Auftritten
+     *   color  – Farbe [r, g, b]
+     *   pixel  – Größe eines Sprite-Pixels in Rasterpixeln
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem fliegt keine Fledermaus.
+     */
+    bats(options = {}) {
+      const every = options.every ?? [7, 14];
+      const color = options.color ?? [130, 70, 190];
+      const S = options.pixel ?? 1;
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const FRAMES = [
+        ['#.......#', '##.###.##', '#.#####.#', '..##.##..'],   // Flügel oben
+        ['.........', '#.......#', '##.###.##', '#.#####.#']    // Flügel unten
+      ];
+
+      let bats = [], timer = 2 + Math.random() * 3, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      // Eine Gruppe von 1 bis 3 Fledermäusen, von links oder rechts, in gleicher Höhe
+      function spawnGroup() {
+        const fromLeft = Math.random() < 0.5, dir = fromLeft ? 1 : -1;
+        const n = 1 + Math.floor(Math.random() * 3);
+        const v = rnd(0.12, 0.45), speed = rnd(0.05, 0.09) * dir;   // Anteile: Höhe, Breite pro Sekunde
+        for (let i = 0; i < n; i++) {
+          bats.push({
+            u: (fromLeft ? -0.05 : 1.05) - dir * i * rnd(0.04, 0.07),
+            v: v + rnd(-0.03, 0.03) + i * 0.02,
+            speed: speed * rnd(0.9, 1.1),
+            phase: Math.random() * 10
+          });
+        }
+      }
+
+      function drawSprite(e, rows, x, y) {
+        for (let r = 0; r < rows.length; r++) {
+          for (let k = 0; k < rows[r].length; k++) {
+            if (rows[r][k] !== '#') continue;
+            for (let sy = 0; sy < S; sy++) {
+              for (let sx = 0; sx < S; sx++) {
+                e.overlay(x + k * S + sx, y + r * S + sy, color[0], color[1], color[2], 1, true);
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            spawnGroup();
+          }
+
+          const W = e.cols, H = e.rows;
+          for (let k = bats.length - 1; k >= 0; k--) {
+            const b = bats[k];
+            b.u += b.speed * dt;
+            if (b.u < -0.1 || b.u > 1.1) { bats.splice(k, 1); continue; }
+
+            const x = Math.round(b.u * W);
+            const y = Math.round(b.v * H + Math.sin(t * 2 + b.phase) * 2);   // sanftes Auf und Ab
+            const rows = FRAMES[Math.floor((t + b.phase) / 0.22) % 2];        // Flügelschlag
+            drawSprite(e, rows, x, y);
+          }
+        }
+      };
+    },
+
+    /*
+     * Geister: ab und zu steigt ein kleiner Geist langsam von unten auf und wabert dabei
+     * seitlich. Sie werden unten und oben weich ein- und ausgeblendet. Gezeichnet als Overlay
+     * in Lavendel; die Farbe bleibt im Dark Mode so, wie sie ist (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei neuen Geistern
+     *   max    – höchstens so viele Geister gleichzeitig
+     *   color  – Farbe [r, g, b]
+     *   alpha  – Deckkraft (0…1)
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem erscheinen keine Geister.
+     */
+    ghosts(options = {}) {
+      const every = options.every ?? [4, 9];
+      const max = options.max ?? 3;
+      const color = options.color ?? [150, 130, 200];
+      const alpha = options.alpha ?? 0.8;
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Löcher (.) sind die Augen und der Wellenrand unten
+      const GHOST = ['.###.', '#####', '#.#.#', '#####', '#####', '#.#.#'];
+
+      let ghosts = [], timer = 1 + Math.random() * 2, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            if (ghosts.length < max) {
+              ghosts.push({
+                u: rnd(0.1, 0.9),     // Position in der Breite (Anteil)
+                v: 1.05,              // Position in der Höhe (Anteil), startet unten
+                rise: rnd(0.025, 0.04),
+                sway: rnd(0.6, 1.6),
+                phase: Math.random() * 10
+              });
+            }
+          }
+
+          const W = e.cols, H = e.rows;
+          // Auf dem Bildschirm ist ein Pixel des Geists so groß wie 2 Rasterpixel, am Handy 1
+          const S = W >= 200 ? 2 : 1;
+          for (let k = ghosts.length - 1; k >= 0; k--) {
+            const g = ghosts[k];
+            g.v -= g.rise * dt;
+            if (g.v < -0.15) { ghosts.splice(k, 1); continue; }
+
+            const x = Math.round(g.u * W + Math.sin(t * g.sway + g.phase) * 3);
+            const y = Math.round(g.v * H);
+            // Weich ein- und ausblenden, am unteren und oberen Rand
+            const fade = Math.max(0, Math.min(1, (1.05 - g.v) * 6, (g.v + 0.15) * 6));
+            for (let r = 0; r < GHOST.length; r++) {
+              for (let c = 0; c < GHOST[r].length; c++) {
+                if (GHOST[r][c] !== '#') continue;
+                for (let sy = 0; sy < S; sy++) {
+                  for (let sx = 0; sx < S; sx++) {
+                    e.overlay(x + c * S + sx, y + r * S + sy, color[0], color[1], color[2], alpha * fade, true);
+                  }
+                }
+              }
+            }
+          }
+        }
+      };
+    },
+
+    /*
+     * Osterhasen: ab und zu hoppelt ein kleiner Hase unten quer durchs Bild. Bei jedem
+     * Hopser hebt er kurz ab. Gezeichnet als Overlay; die Farbe bleibt im Dark Mode so,
+     * wie sie ist (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei Auftritten
+     *   color  – Farbe [r, g, b]
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem hoppelt niemand.
+     */
+    bunnies(options = {}) {
+      const every = options.every ?? [8, 16];
+      const color = options.color ?? [150, 105, 75];
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Front-Ansicht: Ohren, Kopf, Körper. Beim Sprung sind die Füße eingezogen.
+      const AIR = ['.#...#.', '.#...#.', '#######', '#.###.#', '#######', '.#...#.'];
+      const LAND = ['.#...#.', '.#...#.', '#######', '#.###.#', '#######', '##...##'];
+      const HOP = 0.8;   // Sekunden pro Hopser
+      const AIR_PART = 0.6;   // Anteil des Hopsers, in dem der Hase in der Luft ist
+
+      let bunnies = [], timer = 3 + Math.random() * 4, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      function spawn() {
+        const fromLeft = Math.random() < 0.5;
+        bunnies.push({
+          u: fromLeft ? -0.05 : 1.05,
+          dir: fromLeft ? 1 : -1,
+          speed: rnd(0.05, 0.08),   // Anteil der Breite pro Sekunde
+          phase: Math.random() * 10
+        });
+      }
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            spawn();
+          }
+
+          const W = e.cols, H = e.rows;
+          const S = W >= 200 ? 2 : 1;   // auf dem großen Bildschirm etwas größer
+          for (let k = bunnies.length - 1; k >= 0; k--) {
+            const b = bunnies[k];
+            b.u += b.dir * b.speed * dt;
+            if (b.u < -0.1 || b.u > 1.1) { bunnies.splice(k, 1); continue; }
+
+            const cyc = ((t + b.phase) % HOP) / HOP;           // 0…1 innerhalb eines Hopsers
+            const inAir = cyc < AIR_PART;
+            const lift = inAir ? Math.sin(Math.PI * cyc / AIR_PART) * 4 * S : 0;
+            const x = Math.round(b.u * W);
+            const y = Math.round(H * 0.9 - 6 * S - lift);      // Füße knapp über dem unteren Rand
+            paintRows(e, inAir ? AIR : LAND, x, y, S, color, 1);
+          }
+        }
+      };
+    },
+
+    /*
+     * Ostereier: ab und zu taucht irgendwo im Bild ein bemaltes Ei auf, blendet weich ein,
+     * bleibt kurz und blendet wieder aus. Die Farben kommen aus den Optionen (z. B. die
+     * Saisonfarben), die Farbe bleibt im Dark Mode so, wie sie ist (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei neuen Eiern
+     *   max    – höchstens so viele Eier gleichzeitig
+     *   colors – Liste von Farben [[r, g, b], …], eine davon wird zufällig genommen
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem erscheinen keine Eier.
+     */
+    eggs(options = {}) {
+      const every = options.every ?? [1.5, 4];
+      const max = options.max ?? 6;
+      const colors = options.colors ?? [[110, 200, 165], [140, 195, 235], [200, 160, 230], [240, 135, 185], [250, 205, 95]];
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const EGG = ['.#.', '###', '###', '.#.'];
+
+      let eggs = [], timer = 1 + Math.random(), t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            if (eggs.length < max) {
+              eggs.push({
+                u: rnd(0.05, 0.95),
+                v: rnd(0.1, 0.9),
+                life: 0,
+                dur: rnd(3, 4.5),
+                color: colors[Math.floor(Math.random() * colors.length)]
+              });
+            }
+          }
+
+          const W = e.cols, H = e.rows;
+          const S = W >= 200 ? 2 : 1;
+          for (let k = eggs.length - 1; k >= 0; k--) {
+            const g = eggs[k];
+            g.life += dt;
+            if (g.life >= g.dur) { eggs.splice(k, 1); continue; }
+
+            // Weich einblenden, dann kurz stehen, dann ausblenden
+            const fade = Math.max(0, Math.min(1, g.life / 0.6, (g.dur - g.life) / 0.8));
+            const x = Math.round(g.u * W), y = Math.round(g.v * H);
+            paintRows(e, EGG, x, y, S, g.color, fade);
+          }
+        }
+      };
+    },
+
+    /*
+     * Herzen: ab und zu steigt ein kleines Herz langsam von unten auf, wiegt sich dabei
+     * seitlich und pulsiert leicht. Oben und unten wird es weich ein- und ausgeblendet.
+     * Gezeichnet als Overlay; die Farbe bleibt im Dark Mode so, wie sie ist (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei neuen Herzen
+     *   max    – höchstens so viele Herzen gleichzeitig
+     *   color  – Farbe [r, g, b]
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem erscheinen keine Herzen.
+     */
+    hearts(options = {}) {
+      const every = options.every ?? [2.5, 6];
+      const max = options.max ?? 6;
+      const color = options.color ?? [225, 60, 110];
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const HEART = ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'];
+
+      let hearts = [], timer = 1 + Math.random() * 2, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            if (hearts.length < max) {
+              hearts.push({
+                u: rnd(0.08, 0.92),   // Position in der Breite (Anteil)
+                v: 1.05,              // Position in der Höhe (Anteil), startet unten
+                rise: rnd(0.03, 0.045),
+                sway: rnd(0.8, 1.8),
+                phase: Math.random() * 10
+              });
+            }
+          }
+
+          const W = e.cols, H = e.rows;
+          const S = W >= 200 ? 2 : 1;
+          for (let k = hearts.length - 1; k >= 0; k--) {
+            const h = hearts[k];
+            h.v -= h.rise * dt;
+            if (h.v < -0.15) { hearts.splice(k, 1); continue; }
+
+            const x = Math.round(h.u * W + Math.sin(t * h.sway + h.phase) * 3);
+            const y = Math.round(h.v * H);
+            const fade = Math.max(0, Math.min(1, (1.05 - h.v) * 6, (h.v + 0.15) * 6));
+            const pulse = 0.85 + 0.15 * Math.sin(t * 4 + h.phase);   // leichtes Pulsieren
+            paintRows(e, HEART, x, y, S, color, pulse * fade);
+          }
+        }
+      };
+    },
+
+    /*
+     * Feuerwerk: ab und zu steigt eine Rakete von unten auf und platzt oben in einem bunten
+     * Kreis aus Funken, die langsam fallen und verblassen. Gezeichnet als Overlay; die Farben
+     * bleiben im Dark Mode so, wie sie sind (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei Raketen
+     *   colors – Liste von Farben [[r, g, b], …], eine davon pro Rakete
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem gibt es kein Feuerwerk.
+     */
+    fireworks(options = {}) {
+      const every = options.every ?? [1.5, 3.5];
+      const colors = options.colors ?? [[255, 210, 90], [240, 70, 70], [90, 170, 255], [255, 150, 60]];
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      let rockets = [], sparks = [], timer = 1, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+      const pick = list => list[Math.floor(Math.random() * list.length)];
+
+      // Ein Punkt der Grafik: S x S Rasterpixel (auf großen Bildschirmen größer)
+      const blob = (e, x, y, S, c, a) => {
+        for (let sy = 0; sy < S; sy++) {
+          for (let sx = 0; sx < S; sx++) e.overlay(x + sx, y + sy, c[0], c[1], c[2], a, true);
+        }
+      };
+
+      // Funken rechnen in Anteilen der Fläche; das Seitenverhältnis sorgt dafür, dass der Kreis rund bleibt
+      function burst(e, u, v, color) {
+        const n = 16 + Math.floor(Math.random() * 7);
+        const aspect = e.rows / e.cols;
+        const parts = [];
+        for (let i = 0; i < n; i++) {
+          const angle = (i / n) * Math.PI * 2 + rnd(-0.1, 0.1);
+          const speed = rnd(0.15, 0.3);   // Anteil der Höhe pro Sekunde
+          parts.push({ u, v, du: Math.cos(angle) * speed * aspect, dv: Math.sin(angle) * speed });
+        }
+        sparks.push({ parts, color, age: 0, life: rnd(1.0, 1.4) });
+      }
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            rockets.push({ u: rnd(0.15, 0.85), v: 1.02, rise: rnd(0.5, 0.8), target: rnd(0.12, 0.45), color: pick(colors) });
+          }
+
+          const W = e.cols, H = e.rows;
+          const S = W >= 200 ? 2 : 1;
+          for (let k = rockets.length - 1; k >= 0; k--) {
+            const r = rockets[k];
+            r.v -= r.rise * dt;
+            if (r.v <= r.target) {   // oben angekommen: platzen
+              burst(e, r.u, r.v, r.color);
+              rockets.splice(k, 1);
+              continue;
+            }
+            const x = Math.round(r.u * W), y = Math.round(r.v * H);
+            blob(e, x, y, S, r.color, 1);
+            blob(e, x, y + S, S, r.color, 0.5);   // kurze Spur
+          }
+
+          for (let k = sparks.length - 1; k >= 0; k--) {
+            const s = sparks[k];
+            s.age += dt;
+            if (s.age >= s.life) { sparks.splice(k, 1); continue; }
+            const fade = 1 - s.age / s.life;
+            for (const p of s.parts) {
+              p.u += p.du * dt;
+              p.v += p.dv * dt;
+              p.dv += 0.25 * dt;   // Schwerkraft
+              blob(e, Math.round(p.u * W), Math.round(p.v * H), S, s.color, fade);
+            }
+          }
+        }
+      };
+    },
+
+    /*
+     * Streiche: ruft in unregelmäßigen Abständen eine Funktion auf, z. B. um Name und Logo mit
+     * einer anderen Animation neu aufzubauen. Hat selbst keine Darstellung.
+     *
+     * Optionen:
+     *   every   – [min, max] Sekunden zwischen zwei Streichen
+     *   onTrick – Funktion, die bei jedem Streich läuft
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem gibt es keine Streiche.
+     */
+    tricks(options = {}) {
+      const every = options.every ?? [25, 45];
+      const onTrick = options.onTrick ?? (() => {});
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      let timer = rnd(10, 20);   // der erste Streich kommt bald nach dem Laden
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            onTrick();
+          }
+        }
+      };
+    },
+
+    /*
+     * Konfetti: bunte Schnipsel fallen von oben nach unten und wehen dabei hin und her.
+     * Wie der Schnee, aber in Farbe und mit mehr Teilchen. Gezeichnet als Overlay; die Farben
+     * bleiben im Dark Mode so, wie sie sind (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei neuen Schnipseln
+     *   max    – höchstens so viele gleichzeitig (Standard: je nach Fläche)
+     *   colors – Liste von Farben [[r, g, b], …]
+     *   speed  – Faktor auf die Fallgeschwindigkeit (1 = normal)
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem fällt kein Konfetti.
+     */
+    confetti(options = {}) {
+      const every = options.every ?? [0.5, 1.5];
+      const colors = options.colors ?? [[220, 40, 50], [250, 200, 40], [60, 170, 80], [50, 120, 230], [230, 90, 180]];
+      const speed = options.speed ?? 1;
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Schnipsel: ein Punkt, ein waagerechter oder ein senkrechter Strich
+      const SHAPES = [[[0, 0]], [[0, 0], [1, 0]], [[0, 0], [0, 1]]];
+
+      let pieces = [], timer = 0.5, t = 0;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+      const pick = list => list[Math.floor(Math.random() * list.length)];
+
+      function makePiece(v) {
+        return {
+          u: Math.random(),                       // Position in der Breite (Anteil)
+          v,                                      // Position in der Höhe (Anteil)
+          fall: rnd(0.05, 0.09) * speed,          // Anteil der Höhe pro Sekunde
+          amp: rnd(0.8, 2.5),                     // Seitwärts-Schwingung in Rasterpixeln
+          freq: rnd(0.8, 1.8),
+          phase: rnd(0, Math.PI * 2),
+          color: pick(colors),
+          shape: pick(SHAPES)
+        };
+      }
+
+      return {
+        init() {
+          // Beim Ändern der Fenstergröße bleiben die Schnipsel erhalten
+          if (pieces.length) return;
+          pieces = Array.from({ length: 6 }, () => makePiece(Math.random()));
+        },
+
+        update(e, dt) {
+          if (reduced) return;
+          t += dt;
+          const W = e.cols, H = e.rows;
+          const S = W >= 200 ? 2 : 1;   // auf großen Bildschirmen etwas größer
+          const limit = options.max ?? Math.max(14, Math.min(30, Math.round((W * H) / 2000)));
+
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            if (pieces.length < limit) pieces.push(makePiece(-rnd(0.01, 0.05)));
+          }
+
+          const wind = Math.sin(t * 0.25) * 0.01;   // leichter Wind (Anteil der Breite pro Sekunde)
+          for (let k = pieces.length - 1; k >= 0; k--) {
+            const p = pieces[k];
+            p.v += p.fall * dt;
+            p.u += wind * dt;
+            if (p.u < 0) p.u += 1;
+            else if (p.u >= 1) p.u -= 1;
+            if (p.v > 1.02) { pieces.splice(k, 1); continue; }   // unten angekommen
+
+            const x = Math.round(p.u * W + Math.sin(t * p.freq + p.phase) * p.amp);
+            const y = Math.round(p.v * H);
+            for (const [dx, dy] of p.shape) {
+              for (let sy = 0; sy < S; sy++) {
+                for (let sx = 0; sx < S; sx++) {
+                  e.overlay(x + dx * S + sx, y + dy * S + sy, p.color[0], p.color[1], p.color[2], 1, true);
+                }
+              }
+            }
+          }
+        }
+      };
+    },
+
+    /*
+     * Blumen: ab und zu wächst unten im Bild eine kleine Tulpe. Sie wächst von unten nach oben,
+     * blüht kurz und verblasst wieder. Gezeichnet als Overlay; die Farben bleiben im Dark Mode
+     * so, wie sie sind (keep).
+     *
+     * Optionen:
+     *   every  – [min, max] Sekunden zwischen zwei neuen Blumen
+     *   max    – höchstens so viele gleichzeitig
+     *   colors – Liste von Farben [[r, g, b], …], eine davon pro Blume
+     *
+     * Bei "Bewegung reduzieren" im Betriebssystem wächst keine Blume.
+     */
+    flowers(options = {}) {
+      const every = options.every ?? [1, 3];
+      const max = options.max ?? 7;
+      const colors = options.colors ?? [[235, 95, 140], [250, 160, 185], [200, 130, 215], [250, 215, 110], [240, 120, 90]];
+      const reduced = global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Tulpe, 5 breit und 6 hoch; die Blüte ist oben, der Stiel unten
+      const FLOWER = ['#.#.#', '#####', '.###.', '..#..', '..#..', '.#.#.'];
+      const ROWS = FLOWER.length;
+      const GROW = 1.8, FADE = 1.0;   // Sekunden zum Wachsen und zum Verblassen
+
+      let flowers = [], timer = 1;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+
+      return {
+        update(e, dt) {
+          if (reduced) return;
+          timer -= dt;
+          if (timer <= 0) {
+            timer = rnd(every[0], every[1]);
+            if (flowers.length < max) {
+              flowers.push({
+                u: rnd(0.05, 0.95),
+                base: rnd(0.8, 0.94),    // Anteil der Höhe, an dem der Stiel steht
+                age: 0,
+                hold: rnd(3, 5),
+                color: colors[Math.floor(Math.random() * colors.length)]
+              });
+            }
+          }
+
+          const W = e.cols, H = e.rows;
+          const S = W >= 200 ? 2 : 1;
+          for (let k = flowers.length - 1; k >= 0; k--) {
+            const f = flowers[k];
+            f.age += dt;
+            const total = GROW + f.hold + FADE;
+            if (f.age >= total) { flowers.splice(k, 1); continue; }
+
+            // Von unten nach oben sichtbar werden
+            const visible = Math.max(1, Math.ceil(Math.min(1, f.age / GROW) * ROWS));
+            const start = ROWS - visible;
+            const alpha = Math.min(1, (total - f.age) / FADE);
+            const x = Math.round(f.u * W) - 2 * S;
+            const yTop = Math.round(f.base * H) - ROWS * S + start * S;
+            paintRows(e, FLOWER.slice(start), x, yTop, S, f.color, alpha);
+          }
+        }
+      };
+    },
+
+    /*
      * Gedrückt halten: Von der Maus aus wachsen Ranken nach außen, wie Wurzeln oder Efeu.
      * Sie schlängeln sich, verzweigen sich ab und zu und werden zu den Spitzen hin heller.
      * Beim Loslassen (oder wenn sie ausgewachsen sind) lösen sie sich Pixel für Pixel
@@ -1149,6 +1830,8 @@
       const pick = typeof source === 'function' ? source : () => source;
       const color = options.color ?? [20, 20, 20];
       const palette = options.palette ?? [color];
+      // keepColors: die Palettenfarben bleiben im Dark Mode so, wie sie sind (nicht umgedreht)
+      const keep = options.keepColors === true;
       const shading = options.shading ?? 'bands';
       const background = options.background ?? randomRGB;
       const fit = options.fit ?? 0.6;
@@ -1291,7 +1974,7 @@
       function stamp(x, y, c, a) {
         const x0 = Math.round(x), y0 = Math.round(y);
         for (let sy = 0; sy < s; sy++) {
-          for (let sx = 0; sx < s; sx++) engine.overlay(x0 + sx, y0 + sy, c[0], c[1], c[2], a);
+          for (let sx = 0; sx < s; sx++) engine.overlay(x0 + sx, y0 + sy, c[0], c[1], c[2], a, keep);
         }
       }
 
@@ -1431,7 +2114,7 @@
           pt.vy += 150 * dt;
           pt.x += pt.vx * dt;
           pt.y += pt.vy * dt;
-          engine.overlay(Math.round(pt.x), Math.round(pt.y), pt.c[0], pt.c[1], pt.c[2], 1 - pt.age / pt.life);
+          engine.overlay(Math.round(pt.x), Math.round(pt.y), pt.c[0], pt.c[1], pt.c[2], 1 - pt.age / pt.life, keep);
         }
         particles = particles.filter(pt => pt.age < pt.life);
       }
@@ -1488,7 +2171,7 @@
             active.fill(1);
             for (let c = 0; c < cells.length; c++) {
               const pc = ptCol[(c / (s * s)) | 0];
-              engine.setColorNow(cells[c], pc[0], pc[1], pc[2], 1);
+              engine.setColorNow(cells[c], pc[0], pc[1], pc[2], 1, keep);
             }
           }
         },
@@ -1515,7 +2198,7 @@
                 continue;
               }
               active[k] = 1;
-              for (let c = k * s2; c < (k + 1) * s2; c++) engine.setColorNow(cells[c], flash[0], flash[1], flash[2], 1);
+              for (let c = k * s2; c < (k + 1) * s2; c++) engine.setColorNow(cells[c], flash[0], flash[1], flash[2], 1, keep);
             }
 
             const hx = api.col + data.x[k] * s, hy = api.row + data.y[k] * s;
@@ -1563,10 +2246,10 @@
             if (moved[k]) {
               // Gerade zurückgekommen: sofort wieder an seinem Platz zeigen
               moved[k] = 0;
-              for (let c = k * s2; c < (k + 1) * s2; c++) engine.setColorNow(cells[c], pc[0], pc[1], pc[2], 1);
+              for (let c = k * s2; c < (k + 1) * s2; c++) engine.setColorNow(cells[c], pc[0], pc[1], pc[2], 1, keep);
             }
             // Jeden Frame neu setzen, damit Hover die Form nicht überschreibt
-            for (let c = k * s2; c < (k + 1) * s2; c++) engine.setColor(cells[c], pc[0], pc[1], pc[2], 1);
+            for (let c = k * s2; c < (k + 1) * s2; c++) engine.setColor(cells[c], pc[0], pc[1], pc[2], 1, keep);
           }
 
           drawEffects(p, dt, time);

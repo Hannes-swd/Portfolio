@@ -55,6 +55,43 @@
     kinds: ['birds', 'comet', 'glider', 'ufo']
   }));
 
+  // Weihnachten: Schnee fällt von oben – nur in der Saison christmas (js/season.js)
+  if (window.Season && Season.current === 'christmas') {
+    add('Schnee', () => Behaviors.snow());
+  }
+
+  // Halloween: Fledermäuse fliegen quer durchs Bild, Geister steigen auf – nur in der Saison halloween
+  if (window.Season && Season.current === 'halloween') {
+    add('Fledermäuse', () => Behaviors.bats());
+    add('Geister', () => Behaviors.ghosts());
+  }
+
+  // Ostern: Osterhasen hoppeln unten durchs Bild, Ostereier tauchen auf – nur in der Saison easter
+  if (window.Season && Season.current === 'easter') {
+    add('Osterhasen', () => Behaviors.bunnies());
+    add('Ostereier', () => Behaviors.eggs({ colors: Season.palette }));
+  }
+
+  // Valentinstag: kleine Herzen steigen von unten auf – nur in der Saison valentine
+  if (window.Season && Season.current === 'valentine') {
+    add('Herzen', () => Behaviors.hearts());
+  }
+
+  // Silvester / Neujahr: Raketen steigen auf und platzen – nur in der Saison newyear
+  if (window.Season && Season.current === 'newyear') {
+    add('Feuerwerk', () => Behaviors.fireworks({ colors: Season.palette }));
+  }
+
+  // Karneval: buntes Konfetti fällt von oben – nur in der Saison carnival
+  if (window.Season && Season.current === 'carnival') {
+    add('Konfetti', () => Behaviors.confetti({ colors: Season.palette }));
+  }
+
+  // Muttertag: kleine Tulpen wachsen unten im Bild – nur in der Saison mothersday
+  if (window.Season && Season.current === 'mothersday') {
+    add('Blumen', () => Behaviors.flowers({ colors: Season.palette }));
+  }
+
   // Gedrückt halten: Pixelwolke wächst langsam und löst sich danach auf
   add('Ranken', () => Behaviors.holdBloom({
     maxPx: 160,     // maximale Länge der Ranken (in CSS-px)
@@ -67,8 +104,11 @@
   const intros = ['write', 'rain', 'assemble', 'print', 'snakes', 'matrix', 'glitch', 'mill'];
   const intro = intros[Math.floor(Math.random() * intros.length)];
 
-  // Grautöne für Name und Logo, von oben (dunkel) nach unten (hell)
-  const grays = [[34, 34, 34], [62, 62, 62], [92, 92, 92], [124, 124, 124], [158, 158, 158]];
+  // Grautöne für Name und Logo, von oben (dunkel) nach unten (hell).
+  // In einer Saison (js/season.js) nehmen Name und Logo deren Farben.
+  const shapeColors = (window.Season && Season.palette) || [[34, 34, 34], [62, 62, 62], [92, 92, 92], [124, 124, 124], [158, 158, 158]];
+  // Saisonfarben bleiben im Dark Mode so, wie sie sind; Grautöne werden wie gewohnt umgedreht
+  const seasonColors = !!(window.Season && Season.palette);
 
   // Formen kommen nach den anderen Behaviors, damit sie immer obenauf liegen
   // Passt der große Name nicht aufs Raster (Handy), wird die kleine Version genommen
@@ -78,7 +118,8 @@
     delay: 0.3,
     flash: [150, 150, 150],
     scatter: true,
-    palette: grays,
+    palette: shapeColors,
+    keepColors: seasonColors,
     shading: 'bands',    // 'bands', 'diagonal' oder 'noise'
     background: baseColor
   }));
@@ -93,7 +134,8 @@
     onClick: () => location.reload(),   // Klick aufs Logo lädt die Seite neu
     flash: [150, 150, 150],
     scatter: true,
-    palette: grays,
+    palette: shapeColors,
+    keepColors: seasonColors,
     shading: 'bands',    // 'bands', 'diagonal' oder 'noise'
     background: baseColor
   }));
@@ -153,6 +195,19 @@
     visible: e => e.width <= 760,
     onClick: () => window.openMenu && window.openMenu()
   }));
+
+  // 1. April: ab und zu bauen sich Name und Logo mit einer anderen Animation neu auf – nur in der Saison aprilfools
+  if (window.Season && Season.current === 'aprilfools') {
+    const pranks = ['glitch', 'mill', 'matrix', 'rain', 'snakes', 'write'];
+    add('Aprilscherz', () => Behaviors.tricks({
+      every: [25, 45],
+      onTrick: () => {
+        const pick = pranks[Math.floor(Math.random() * pranks.length)];
+        if (nameShape) nameShape.replay(pick);
+        if (logoShape) logoShape.replay(pick);
+      }
+    }));
+  }
 
   // Bildschirmschoner: nach 5 Minuten ohne Eingabe nach oben scrollen und Szenen zeigen.
   // Kommt als Letztes, damit die Szenen über allem liegen. Beim Aufwachen baut sich

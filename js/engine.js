@@ -122,6 +122,8 @@
       this.b = new Float32Array(n); this.a = new Float32Array(n);
       this.tr = new Float32Array(n); this.tg = new Float32Array(n);
       this.tb = new Float32Array(n); this.ta = new Float32Array(n);
+      // keep: Pixel, deren Farbe im Dark Mode nicht umgedreht wird (z. B. Formfarben, Schnee)
+      this._keep = new Uint8Array(n);
       // Freier Speicher pro Pixel für Behaviors (z. B. Timer, Zustände)
       this.data = new Array(n);
       for (let i = 0; i < n; i++) this.data[i] = {};
@@ -176,19 +178,22 @@
 
     /* ---------- Farben ---------- */
 
-    // Zielfarbe setzen – der Pixel gleitet weich dorthin
-    setColor(i, r, g, b, a = 1) {
+    // Zielfarbe setzen – der Pixel gleitet weich dorthin.
+    // keep = true: die Farbe bleibt im Dark Mode so, wie sie ist (wird nicht umgedreht)
+    setColor(i, r, g, b, a = 1, keep = false) {
       if (i < 0 || i >= this.count) return;
       this.tr[i] = r; this.tg[i] = g; this.tb[i] = b; this.ta[i] = a;
+      this._keep[i] = keep ? 1 : 0;
     }
 
-    // Farbe sofort setzen, ohne Übergang
-    setColorNow(i, r, g, b, a = 1) {
+    // Farbe sofort setzen, ohne Übergang (keep wie bei setColor)
+    setColorNow(i, r, g, b, a = 1, keep = false) {
       if (i < 0 || i >= this.count) return;
       this.r[i] = this.tr[i] = r;
       this.g[i] = this.tg[i] = g;
       this.b[i] = this.tb[i] = b;
       this.a[i] = this.ta[i] = a;
+      this._keep[i] = keep ? 1 : 0;
     }
 
     getColor(i) {
@@ -198,10 +203,11 @@
     // Overlay: Pixel nur für diesen einen Frame darüberlegen, ohne den Zustand des
     // Rasters zu verändern. Ideal für bewegte Dinge wie Partikel, Strahlen, Funken.
     // Muss jeden Frame (in update) neu gezeichnet werden.
-    overlay(col, row, r, g, b, a = 1) {
+    // keep = true: die Farbe bleibt im Dark Mode unverändert (z. B. weißer Schnee)
+    overlay(col, row, r, g, b, a = 1, keep = false) {
       const i = this.index(col, row);
       if (i < 0 || a <= 0) return;
-      this._overlay.push(i, r, g, b, a > 1 ? 1 : a);
+      this._overlay.push(i, r, g, b, a > 1 ? 1 : a, keep ? 1 : 0);
     }
 
     /* ---------- Behaviors ---------- */
@@ -409,46 +415,44 @@
     _render() {
       const px = this.image.data;
       const { r, g, b, a } = this;
+      // Dark Mode: jede Ebene (Raster, Schleier, Overlays) wird einzeln umgedreht, bevor sie
+      // gemischt wird. Gedreht wird, was kein keep hat – und während des Übergangs nur die
+      // Pixel, die schon dran sind. So bleibt ein graues Overlay auf einer Formfarbe richtig.
+      const inv = this._invert;
+      const order = this._invertOrder, keep = this._keep;
+      const flipped = i => inv > 0 && (inv >= 1 || order[i] < inv);
+
       for (let i = 0, p = 0; i < this.count; i++, p += 4) {
-        px[p] = r[i];
-        px[p + 1] = g[i];
-        px[p + 2] = b[i];
+        const f = keep[i] === 0 && flipped(i);
+        px[p] = f ? 255 - r[i] : r[i];
+        px[p + 1] = f ? 255 - g[i] : g[i];
+        px[p + 2] = f ? 255 - b[i] : b[i];
         px[p + 3] = a[i] * 255;
       }
 
-      // Schleier über das Raster legen
+      // Schleier über das Raster legen (gilt wie ein Overlay ohne keep)
       const v = this.veil;
       if (v > 0) {
         const [vr, vg, vb] = this.veilColor;
-        for (let p = 0; p < px.length; p += 4) {
-          px[p] += (vr - px[p]) * v;
-          px[p + 1] += (vg - px[p + 1]) * v;
-          px[p + 2] += (vb - px[p + 2]) * v;
+        for (let i = 0, p = 0; i < this.count; i++, p += 4) {
+          const f = flipped(i);
+          px[p] += ((f ? 255 - vr : vr) - px[p]) * v;
+          px[p + 1] += ((f ? 255 - vg : vg) - px[p + 1]) * v;
+          px[p + 2] += ((f ? 255 - vb : vb) - px[p + 2]) * v;
         }
       }
 
-      // Overlay-Pixel darüber mischen
+      // Overlay-Pixel darüber mischen (ohne keep werden sie mit dem Raster umgedreht)
       const ov = this._overlay;
-      for (let k = 0; k < ov.length; k += 5) {
-        const p = ov[k] * 4, oa = ov[k + 4];
-        px[p] += (ov[k + 1] - px[p]) * oa;
-        px[p + 1] += (ov[k + 2] - px[p + 1]) * oa;
-        px[p + 2] += (ov[k + 3] - px[p + 2]) * oa;
+      for (let k = 0; k < ov.length; k += 6) {
+        const i = ov[k], p = i * 4, oa = ov[k + 4];
+        const f = ov[k + 5] === 0 && flipped(i);
+        px[p] += ((f ? 255 - ov[k + 1] : ov[k + 1]) - px[p]) * oa;
+        px[p + 1] += ((f ? 255 - ov[k + 2] : ov[k + 2]) - px[p + 1]) * oa;
+        px[p + 2] += ((f ? 255 - ov[k + 3] : ov[k + 3]) - px[p + 2]) * oa;
         px[p + 3] = 255;
       }
       ov.length = 0;
-
-      // Dark Mode: Farben umdrehen – während des Übergangs nur die Pixel, die schon dran sind
-      const inv = this._invert;
-      if (inv > 0) {
-        const order = this._invertOrder;
-        for (let i = 0, p = 0; i < this.count; i++, p += 4) {
-          if (inv < 1 && order[i] >= inv) continue;
-          px[p] = 255 - px[p];
-          px[p + 1] = 255 - px[p + 1];
-          px[p + 2] = 255 - px[p + 2];
-        }
-      }
 
       this.bufferCtx.putImageData(this.image, 0, 0);
 
