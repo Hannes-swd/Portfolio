@@ -1858,6 +1858,7 @@
       let ptCol;                   // Farbe je Formpixel (aus der palette)
       let travel = 0;              // Anteil der Dauer, den ein Pixel unterwegs ist (Regen, Zusammenfliegen)
       let startTime = null, played = false;
+      let hiddenNow = false;       // ausgeblendet, siehe hide() / show()
       let byArrive = null;         // Formpixel nach Ankunft sortiert (Fräskopf)
       let colStart = null;         // Matrix: Startzeitpunkt je Spalte
       let particles = [];          // Späne der Fräse
@@ -2177,6 +2178,7 @@
         },
 
         update(e, dt, time) {
+          if (hiddenNow) return;
           if (startTime === null) startTime = time;
           const elapsed = time - startTime - delay;
           const p = duration > 0 ? elapsed / duration : (elapsed >= 0 ? Infinity : -1);
@@ -2258,6 +2260,24 @@
 
         click(e, i, col, row) {
           if (options.onClick && engine.zoneAt(col, row) === zone) options.onClick();
+        },
+
+        // Form ausblenden: die Pixel zeigen wieder den Hintergrund, bis show() sie zurückholt
+        hide() {
+          if (!engine || hiddenNow) return;
+          hiddenNow = true;
+          for (let c = 0; c < cells.length; c++) {
+            if (cells[c] < 0) continue;
+            const [r, g, b] = background(cells[c], engine);
+            engine.setColorNow(cells[c], r, g, b, 1);
+          }
+        },
+
+        // Form wieder einblenden, mit dem Aufbau-Effekt
+        show() {
+          if (!hiddenNow) return;
+          hiddenNow = false;
+          api.replay();
         },
 
         replay(newIntro) {

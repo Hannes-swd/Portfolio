@@ -209,6 +209,10 @@
     }));
   }
 
+  // Spiele: das Wort eines Spiels auf der Seite tippen (z. B. "snake"), dann läuft es im
+  // Pixelfeld. Esc beendet es. Siehe js/games.js
+  const arcade = add('Spiele', () => Games.arcade());
+
   // Bildschirmschoner: nach 5 Minuten ohne Eingabe nach oben scrollen und Szenen zeigen.
   // Kommt als Letztes, damit die Szenen über allem liegen. Beim Aufwachen baut sich
   // der Name mit einer zufälligen Animation neu auf.
@@ -240,4 +244,5 @@
   window.logoShape = logoShape;
   window.ambient = ambient;   // z. B. ambient.spawn('ufo')
   window.screensaver = screensaver;   // z. B. screensaver.start()
+  window.arcade = arcade;             // z. B. arcade.play('tetris'), arcade.exit()
 })();
