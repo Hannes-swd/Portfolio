@@ -43,7 +43,7 @@
     edge: 0.3,
     structure: 'roots', // Wurzeln wachsen vom Rand nach innen statt zufälliger Pixel
     density: 0.8,
-    hoverPx: 40,        // Radius um die Maus, in dem Pixel umgefärbt werden (CSS-px)
+    hoverCells: 10,     // Radius um die Maus in Rasterpixeln: wächst mit der Pixelgröße (Handy klein, Desktop größer)
     hoverCount: 4,      // so viele zufällige Pixel pro Mausbewegung (verschwinden, wenn die Maus weiterzieht)
     hoverGray: 0.75     // Anteil, der grau wird (der Rest wird wieder weiß)
   }));

@@ -185,7 +185,8 @@
      *   edge        – Breite der dichten Randzone als Anteil der kürzeren Seite
      *   density     – Wahrscheinlichkeit für einen Block direkt am Rand (0…1)
      *   scatter     – Wahrscheinlichkeit für einzelne Blöcke in der Mitte (0…1)
-     *   hoverPx     – Radius in CSS-px, in dem Blöcke verändert werden können
+     *   hoverCells  – Radius in Rasterpixeln, in dem Blöcke verändert werden können. Er hängt an der
+     *                 Pixelgröße des Felds: auf kleinen Bildschirmen (kleine Pixel) bleibt er klein
      *   hoverCount  – wie viele zufällige Blöcke pro überfahrenem Rasterpixel neu eingefärbt werden
      *   hoverGray   – Wahrscheinlichkeit, dass ein Block grau wird (sonst wird er wieder weiß)
      *   structure   – 'roots': Linien wachsen vom Rand nach innen (am Rand dicht und dunkel,
@@ -204,7 +205,7 @@
       const edge = options.edge ?? 0.3;
       const density = options.density ?? 0.8;
       const scatter = options.scatter ?? 0.025;
-      const hoverPx = options.hoverPx ?? 40;
+      const hoverCells = options.hoverCells ?? 10;
       const hoverCount = options.hoverCount ?? 2;
       const hoverGray = options.hoverGray ?? 0.75;
       const structure = options.structure ?? null;   // 'roots': Wurzeln statt zufälliger Blöcke
@@ -289,8 +290,8 @@
           engine = e;
           size = Math.max(1, Math.round((blockPx * engine.dpr) / engine.cellPx));
           inner = Math.max(1, size - Math.round(size * gapRatio));
-          // Hover-Radius von CSS-px in Blöcke umrechnen
-          hoverRadius = (hoverPx * engine.dpr) / (engine.cellPx * size);
+          // Hover-Radius von Rasterpixeln in Blöcke umrechnen
+          hoverRadius = hoverCells / size;
           bcols = Math.ceil(engine.cols / size);
           brows = Math.ceil(engine.rows / size);
 
@@ -351,6 +352,9 @@
 
             const c = Math.random() < hoverGray ? shades[Math.floor(Math.random() * shades.length)] : background;
             const bi = y * bcols + x;
+            // Hover macht einen Block nie heller als seine Ruhefarbe. Sonst blitzen am dichten
+            // grauen Rand (Übergang zum Inhalt) einzelne Blöcke kurz weiß auf.
+            if (c[0] > blockColor[bi * 3]) continue;
             forEachBlockCell(bi, j => engine.setColor(j, c[0], c[1], c[2], 1));
             touched.add(bi);
           }
