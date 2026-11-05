@@ -15,7 +15,7 @@
 
   --px: 4px;           /* Größe eines "Design-Pixels" für Rahmen und Akzente */
   --font-pixel: "Silkscreen", ui-monospace, Consolas, monospace;
-  --font-text: "Jersey 10", ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  --font-text: "VT323", ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
   --nav-h: 64px;
 }
 
@@ -42,7 +42,7 @@ body {
 
 body {
   font-family: var(--font-text);
-  font-size: 1rem;
+  font-size: 1.3rem; /* VT323 wirkt bei gleicher Größe kleiner als andere Schriften */
   line-height: 1.5;
   color: var(--fg);
 }
