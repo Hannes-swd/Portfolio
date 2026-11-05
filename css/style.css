@@ -15,7 +15,7 @@
 
   --px: 4px;           /* Größe eines "Design-Pixels" für Rahmen und Akzente */
   --font-pixel: "Silkscreen", ui-monospace, Consolas, monospace;
-  --font-text: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  --font-text: "Jersey 10", ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
   --nav-h: 64px;
 }
 
